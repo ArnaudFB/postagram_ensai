@@ -1,6 +1,6 @@
 import boto3
-from botocore.config import Config
 import os
+from botocore.config import Config
 from dotenv import load_dotenv
 from typing import Union
 import logging
@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+import uuid
 
 from getSignedUrl import getSignedUrl
 
@@ -46,10 +47,8 @@ my_config = Config(
 
 dynamodb = boto3.resource('dynamodb', config=my_config)
 table = dynamodb.Table(os.getenv("DYNAMO_TABLE"))
-s3_client = boto3.client('s3', config=boto3.session.Config(signature_version='s3v4'))
-bucket = os.getenv("BUCKET")
 
-
+# Endpoint to create a new post
 @app.post("/posts")
 async def post_a_post(post: Post, authorization: str | None = Header(default=None)):
 
@@ -57,25 +56,40 @@ async def post_a_post(post: Post, authorization: str | None = Header(default=Non
     logger.info(f"body : {post.body}")
     logger.info(f"user : {authorization}")
 
-    # Doit retourner le résultat de la requête la table dynamodb
-    return []
+    # Save post to DynamoDB
+    item = {
+        "user": f"USER#{authorization}",
+        'id': f"POST#{uuid.uuid4()}",
+        "title": post.title,
+        "body": post.body
+    }
+    table.put_item(Item=item)
 
+    # Return result of the DynamoDB request
+    return item
+
+# Endpoint to get all posts
 @app.get("/posts")
 async def get_all_posts(user: Union[str, None] = None):
 
-    # Doit retourner une liste de post
-    return []
+    # If user provided, query posts by user
+    if user:
+        response = table.query(
+            KeyConditionExpression=boto3.dynamodb.conditions.Key('user').eq(f"USER#{user}")
+        )
+        posts = response['Items']
+    # Otherwise, get all posts
+    else:
+        response = table.scan()
+        posts = response['Items']
 
-    
-@app.delete("/posts/{post_id}")
-async def get_post_user_id(post_id: str):
-    # Doit retourner le résultat de la requête la table dynamodb
-    return []
-
+    return posts
 @app.get("/signedUrlPut")
 async def get_signed_url_put(filename: str,filetype: str, postId: str,authorization: str | None = Header(default=None)):
     return getSignedUrl(filename, filetype, postId, authorization)
 
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080, log_level="debug")
 
+# http://0.0.0.0:8080/docs

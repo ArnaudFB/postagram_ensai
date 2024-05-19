@@ -28,7 +28,6 @@ def getSignedUrl(filename: str,filetype: str, postId: str, user):
     except ClientError as e:
         logging.error(e)
 
-
     logger.info(f'Url: {url}')
     return {
             "uploadURL": url,
